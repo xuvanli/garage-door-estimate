@@ -18,7 +18,12 @@
   <script type="text/babel">
     const { useEffect, useMemo, useRef, useState } = React;
 
-    const currency = (n) => (isFinite(n) ? n : 0).toLocaleString(undefined, { style: "currency", currency: "USD" });
+    const currency = (value) => {
+      const numeric = Number.isFinite(value) ? value : Number(value);
+      const amount = Number.isFinite(numeric) ? numeric : 0;
+      return amount.toLocaleString(undefined, { style: "currency", currency: "USD" });
+    };
+
     const pct = (n) => `${(n * 100).toFixed(2)}%`;
     const id = () => Math.random().toString(36).slice(2);
 
@@ -141,9 +146,9 @@
       return [state, setState];
     }
 
-    function Card({ title, children }) {
+    function Card({ title, children, className = "", ...props }) {
       return (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-4 ${className}`} {...props}>
           <div className="font-semibold mb-2">{title}</div>
           {children}
         </div>
@@ -220,42 +225,46 @@
 
       const taxableBase = useMemo(() => {
         const taxItems = items.filter((i) => i.taxable).reduce((s, i) => s + i.qty * i.unit * i.price, 0);
-        const taxLabor = true ? laborCost : 0;
-        const taxTravel = true ? mileageCost + emergencyCost + presets.tripFee : 0;
+        const taxLabor = laborCost;
+        const taxTravel = mileageCost + emergencyCost;
         return taxItems + taxLabor + taxTravel;
-      }, [items, laborCost, mileageCost, emergencyCost, presets.tripFee]);
+      }, [items, laborCost, mileageCost, emergencyCost]);
 
       const tax = useMemo(() => taxableBase * presets.taxRate, [taxableBase, presets.taxRate]);
       const total = useMemo(() => Math.max(0, subtotal + laborCost + mileageCost + emergencyCost + tax - discount), [subtotal, laborCost, mileageCost, emergencyCost, tax, discount]);
 
+      const PRESET_PART_LABELS = {
+        torsionSpring: "Torsion Spring",
+        extensionSpring: "Extension Spring",
+        cable: "Lift Cable (per side)",
+        roller: "Nylon Roller",
+        hinge: "Hinge",
+        bearing: "Center/End Bearing",
+        drum: "Cable Drum",
+        strut8ft: "Reinforcement Strut 8'",
+        strut16ft: "Reinforcement Strut 16'",
+        sensorPair: "Safety Sensors (pair)",
+        openerBeltChain: "Opener Belt/Chain",
+        openerCapacitor: "Opener Capacitor",
+        keypad: "Wireless Keypad",
+        remote: "Remote Control",
+        weatherSeal: "Perimeter Weather Seal (ft)",
+        bottomRubber: "Bottom Rubber (ft)",
+        panelRepair: "Panel Repair/Brace",
+        panelReplace: "Panel Replacement",
+      };
+
       const addPresetPart = (key) => {
         const price = presets.parts[key] ?? 0;
-        const labelMap = {
-          torsionSpring: "Torsion Spring",
-          extensionSpring: "Extension Spring",
-          cable: "Lift Cable (per side)",
-          roller: "Nylon Roller",
-          hinge: "Hinge",
-          bearing: "Center/End Bearing",
-          drum: "Cable Drum",
-          strut8ft: "Reinforcement Strut 8'",
-          strut16ft: "Reinforcement Strut 16'",
-          sensorPair: "Safety Sensors (pair)",
-          openerBeltChain: "Opener Belt/Chain",
-          openerCapacitor: "Opener Capacitor",
-          keypad: "Wireless Keypad",
-          remote: "Remote Control",
-          weatherSeal: "Perimeter Weather Seal (ft)",
-          bottomRubber: "Bottom Rubber (ft)",
-          panelRepair: "Panel Repair/Brace",
-          panelReplace: "Panel Replacement",
-        };
-        addItem({ name: labelMap[key] || key, price, qty: 1, unit: 1, taxable: true, group: "Parts" });
+        const label = PRESET_PART_LABELS[key] || key;
+        addItem({ name: label, price, qty: 1, unit: 1, taxable: true, group: "Parts" });
       };
 
       const estimateNo = useMemo(() => new Date().toISOString().slice(0,10).replaceAll('-', '') + '-' + (customer.phone || 'XXXX').slice(-4), [customer.phone]);
 
       const handlePrint = () => window.print();
+
+      const [showPartsList, setShowPartsList] = useState(true);
 
       return (
         <div className="min-h-screen">
@@ -297,13 +306,21 @@
                 <NumberField label="Emergency Fee" value={presets.emergencyFee} onChange={(v) => setPresets({ ...presets, emergencyFee: v })} min={0} step={5} />
                 <NumberField label="Mileage $/mi" value={presets.mileageRate} onChange={(v) => setPresets({ ...presets, mileageRate: v })} min={0} step={0.1} />
                 <NumberField label={`Tax (${pct(presets.taxRate)})`} value={presets.taxRate} onChange={(v) => setPresets({ ...presets, taxRate: v })} min={0} max={0.2} step={0.001} />
-                <button className="mt-2 w-full px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm" onclick="document.getElementById('parts').classList.toggle('hidden')">
-                  Toggle Parts List
+                <button
+                  className="mt-2 w-full px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-sm"
+                  onClick={() => setShowPartsList((prev) => !prev)}
+                >
+                  {showPartsList ? "Hide" : "Show"} Parts List
                 </button>
-                <div id="parts" className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {Object.keys(DEFAULT_PRESETS.parts).map(k => (
-                    <button key={k} className="px-3 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-xs"
-                      onClick={() => addPresetPart(k)}>+ {k}</button>
+                <div className={`mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 ${showPartsList ? "" : "hidden"}`}>
+                  {Object.keys(DEFAULT_PRESETS.parts).map((k) => (
+                    <button
+                      key={k}
+                      className="px-3 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-xs text-left"
+                      onClick={() => addPresetPart(k)}
+                    >
+                      + {PRESET_PART_LABELS[k] || k}
+                    </button>
                   ))}
                 </div>
               </Card>
@@ -353,17 +370,17 @@
               <Card title="Totals">
                 <div className="grid grid-cols-2 gap-2">
                   <Row label="Parts/Services Subtotal" value={currency(subtotal)} />
-                  <Row label={\`Labor (\${Math.max(labor.hours, presets.minLaborHours)} h × \${currency(presets.laborRatePerHour)}/h)\`} value={currency(laborCost)} />
-                  <Row label={\`Mileage (\${customer.distanceMiles} mi × \${currency(presets.mileageRate)}/mi)\`} value={currency(mileageCost)} />
+                  <Row label={`Labor (${Math.max(labor.hours, presets.minLaborHours)} h × ${currency(presets.laborRatePerHour)}/h)`} value={currency(laborCost)} />
+                  <Row label={`Mileage (${customer.distanceMiles} mi × ${currency(presets.mileageRate)}/mi)`} value={currency(mileageCost)} />
                   <Row label={"Emergency Fee"} value={currency(emergencyCost)} />
-                  <Row label={\`Tax (\${pct(presets.taxRate)})\`} value={currency(tax)} />
+                  <Row label={`Tax (${pct(presets.taxRate)})`} value={currency(tax)} />
                   <Row label={"Discount/Coupon"} value={"-" + currency(discount)} />
                   <div className="col-span-2 border-t border-slate-200 mt-2 pt-2" />
                   <Row label={<span className="font-semibold">Total Due</span>} value={<span className="font-bold">{currency(total)}</span>} />
                 </div>
               </Card>
 
-              <Card title="Estimate Preview (Print)">
+              <Card title="Estimate Preview (Print)" className="print-card">
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
                   <div className="flex items-start justify-between">
                     <div>
@@ -437,8 +454,20 @@
 
           <style>{`
             @media print {
-              header, main > section:first-child, footer { display: none !important; }
-              main { padding: 0; }
+              *, *::before, *::after { box-shadow: none !important; }
+              body { margin: 0; background: #fff !important; }
+              body * { visibility: hidden; }
+              .print-card, .print-card * { visibility: visible; }
+              .print-card {
+                position: absolute;
+                inset: 0;
+                margin: 0;
+                border: none !important;
+                width: 100%;
+                max-width: 100%;
+                padding: 1.5rem;
+              }
+              header, footer { display: none !important; }
             }
           `}</style>
         </div>
