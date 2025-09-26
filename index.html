@@ -203,15 +203,37 @@
       });
       const [labor, setLabor] = useLocalState("gd.labor", { hours: 1 });
       const [items, setItems] = useLocalState("gd.items", [
-        { id: id(), name: "Trip Fee", qty: 1, unit: 1, price: presets.tripFee, taxable: true, group: "Services" },
+        { id: id(), name: "Trip Fee", qty: 1, unit: 1, price: presets.tripFee, taxable: true, group: "Services", travel: true },
       ]);
 
       React.useEffect(() => {
-        setItems((prev) => prev.map((it) => (it.name === "Trip Fee" ? { ...it, price: presets.tripFee } : it)));
+        setItems((prev) =>
+          prev.map((it) => {
+            if (it.travel) {
+              return { ...it, price: presets.tripFee };
+            }
+
+            if (it.name === "Trip Fee") {
+              return { ...it, price: presets.tripFee, travel: true, group: it.group || "Services" };
+            }
+
+            return it;
+          })
+        );
       }, [presets.tripFee]);
 
       const addItem = (patch = {}, options = {}) => {
-        const baseItem = { id: id(), name: "Custom", qty: 1, unit: 1, price: 0, taxable: true, group: "Parts", ...patch };
+        const baseItem = {
+          id: id(),
+          name: "Custom",
+          qty: 1,
+          unit: 1,
+          price: 0,
+          taxable: true,
+          group: "Parts",
+          travel: false,
+          ...patch,
+        };
         const shouldMerge = options.merge === true && baseItem.name;
 
         setItems((prev) => {
@@ -224,7 +246,8 @@
             (item.group || "Parts") === (baseItem.group || "Parts") &&
             Number(item.price) === Number(baseItem.price) &&
             Number(item.unit) === Number(baseItem.unit) &&
-            (item.taxable ?? true) === (baseItem.taxable ?? true)
+            (item.taxable ?? true) === (baseItem.taxable ?? true) &&
+            Boolean(item.travel) === Boolean(baseItem.travel)
           );
 
           if (existingIndex === -1) {
@@ -250,11 +273,32 @@
       );
       const discount = useMemo(() => Math.max(0, Number(customer.coupon) || 0), [customer.coupon]);
 
+      const [taxableItemsTotal, taxableTravelTotal] = useMemo(() => {
+        return items.reduce(
+          (acc, item) => {
+            if (!item.taxable) {
+              return acc;
+            }
+
+            const lineTotal = item.qty * item.unit * item.price;
+            if (item.travel) {
+              acc[1] += lineTotal;
+            } else {
+              acc[0] += lineTotal;
+            }
+
+            return acc;
+          },
+          [0, 0]
+        );
+      }, [items]);
+
       const taxableBase = useMemo(() => {
-        const taxItems = items.filter((i) => i.taxable).reduce((s, i) => s + i.qty * i.unit * i.price, 0);
+        const taxItems = taxableItemsTotal;
+        const taxTravel = taxableTravelTotal;
         const taxLabor = laborCost;
-        return taxItems + taxLabor;
-      }, [items, laborCost]);
+        return taxItems + taxLabor + taxTravel;
+      }, [laborCost, taxableItemsTotal, taxableTravelTotal]);
 
       const tax = useMemo(() => taxableBase * presets.taxRate, [taxableBase, presets.taxRate]);
       const total = useMemo(() => Math.max(0, subtotal + laborCost + tax - discount), [subtotal, laborCost, tax, discount]);
